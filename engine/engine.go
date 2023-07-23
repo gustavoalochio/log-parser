@@ -31,6 +31,8 @@ func NewEngine(parser parser.Parser) Engine {
 	}
 }
 
+// InitGame: initizalie the engine struct, creating a
+// game instance and the parser to get information in log file
 func (e *engine) InitGame() *engine {
 	e.Game = entity.NewGame()
 	e.Game.Enable()
@@ -42,6 +44,8 @@ func (e *engine) InitGame() *engine {
 	return e
 }
 
+// Start: responsible for all the logic of the script,
+// it has a loop iteration for each line, determining the approach to gather information
 func (e *engine) Start() {
 	scanner := bufio.NewScanner(os.Stdin)
 	gameCounter := 0
@@ -58,8 +62,12 @@ func (e *engine) Start() {
 		case e.Parser.ParserInterval(line):
 			if e.Game.Running {
 				result := e.EndGame(e.Game)
-				fmt.Print(e.BuildResultGame(result, gameCounter))
-				fmt.Print(e.BuildDeadReasons(e.Game, gameCounter))
+				if result := e.BuildResultGame(result, gameCounter); result != "" {
+					fmt.Println(result)
+				}
+				if result := e.BuildDeadReasons(e.Game, gameCounter); result != "" {
+					fmt.Println(result)
+				}
 			}
 		case e.Parser.ParserClientConnect(line):
 			playerConnectedInformation, err := e.Parser.GetInformationPlayerConnected(line)
@@ -102,6 +110,7 @@ func (e *engine) Start() {
 	}
 }
 
+// BuildResultGame returns the json representation of the game
 func (e *engine) BuildResultGame(result entity.ResultGameInformation, gameCounter int) string {
 
 	gameInstance := fmt.Sprintf("game_%d", gameCounter)
@@ -112,9 +121,10 @@ func (e *engine) BuildResultGame(result entity.ResultGameInformation, gameCounte
 		return ""
 	}
 
-	return string(jsonResult) + "\n"
+	return string(jsonResult)
 }
 
+// BuildDeadReasons returns the json representation of the dead resoans in game
 func (e *engine) BuildDeadReasons(game *entity.Game, gameCounter int) string {
 	gameInstance := fmt.Sprintf("game-%d", gameCounter)
 
@@ -127,9 +137,10 @@ func (e *engine) BuildDeadReasons(game *entity.Game, gameCounter int) string {
 		fmt.Println("converter error - JSON:", err)
 		return ""
 	}
-	return string(jsonResult) + "\n"
+	return string(jsonResult)
 }
 
+// responsible to Finish the game and increments kill
 func (e *engine) EndGame(game *entity.Game) entity.ResultGameInformation {
 	game.Disable()
 
@@ -149,6 +160,8 @@ func (e *engine) EndGame(game *entity.Game) entity.ResultGameInformation {
 	return resultGameInformation
 }
 
+// kill is a function that increments the kill count for a player,
+// or if 'world' is the killer, the player's kill count is reduced by one.
 func (e *engine) Kill(game *entity.Game, playerKilledInformation entity.PlayerKilledInformation) {
 	if playerKilledInformation.KillerName == playerKilledInformation.DeadName {
 		return
