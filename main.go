@@ -2,8 +2,11 @@ package main
 
 import (
 	"log-parser/engine"
+	"log-parser/parser"
 )
 
 func main() {
-	engine.ParsingLog()
+	parser := parser.NewParser()
+	engine := engine.NewEngine(parser)
+	engine.Start()
 }
