@@ -9,57 +9,88 @@ import (
 	"os"
 )
 
-const WorldPlayerName = "<world>"
+//go:generate mockgen -destination=mocks/engine.go -package=mocks -source=engine.go
+type Engine interface {
+	InitGame() *engine
+	Start()
+	BuildDeadReasons(game *entity.Game, gameCounter int) string
+	BuildResultGame(result entity.ResultGameInformation, gameCounter int) string
+	EndGame(game *entity.Game) entity.ResultGameInformation
+	Kill(game *entity.Game, playerKilledInformation entity.PlayerKilledInformation)
+}
 
-func ParsingLog() {
+type engine struct {
+	Parser parser.Parser
+	Game   *entity.Game
+}
+
+func NewEngine(parser parser.Parser) Engine {
+	return &engine{
+		Parser: parser,
+		Game:   nil,
+	}
+}
+
+func (e *engine) InitGame() *engine {
+	e.Game = entity.NewGame()
+	e.Game.Enable()
+
+	playerWorld := entity.NewPlayer("0")
+	playerWorld.UpdatePlayer(e.Game.DefaultPlayerName)
+	e.Game.AddPlayer(playerWorld)
+
+	return e
+}
+
+func (e *engine) Start() {
 	scanner := bufio.NewScanner(os.Stdin)
 	gameCounter := 0
-	game := entity.NewGame()
+	e.Game = entity.NewGame()
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
 		switch {
-		case parser.ParserInitGame(line):
+		case e.Parser.ParserInitGame(line):
 			gameCounter += 1
-			game = entity.InitGame()
+			e.InitGame()
 
-		case parser.ParserInterval(line):
-			if game.Running {
-				result := endGame(game)
-				printResultGame(result, gameCounter)
-				printDeadReasons(game, gameCounter)
+		case e.Parser.ParserInterval(line):
+			if e.Game.Running {
+				result := e.EndGame(e.Game)
+				fmt.Print(e.BuildResultGame(result, gameCounter))
+				fmt.Print(e.BuildDeadReasons(e.Game, gameCounter))
 			}
-		case parser.ParserClientConnect(line):
-			playerConnectedInformation, err := parser.GetInformationPlayerConnected(line)
+		case e.Parser.ParserClientConnect(line):
+			playerConnectedInformation, err := e.Parser.GetInformationPlayerConnected(line)
 			if err != nil {
 				fmt.Println(err.Error())
 				continue
 			}
 			newPlayer := entity.NewPlayer(playerConnectedInformation.PlayerId)
-			game.AddPlayer(newPlayer)
+			e.Game.AddPlayer(newPlayer)
 
-		case parser.ParserClientUserInfoChanged(line):
+		case e.Parser.ParserClientUserInfoChanged(line):
 
-			playerUpdatedInformation, err := parser.GetInformationPlayerUpdate(line)
+			playerUpdatedInformation, err := e.Parser.GetInformationPlayerUpdate(line)
 			if err != nil {
 				fmt.Println(err.Error())
 				continue
 			}
 
-			game.PlayersById[playerUpdatedInformation.PlayerId].UpdatePlayer(playerUpdatedInformation.Name)
-			game.PlayersByName[playerUpdatedInformation.Name] = game.PlayersById[playerUpdatedInformation.PlayerId]
+			e.Game.PlayersById[playerUpdatedInformation.PlayerId].UpdatePlayer(playerUpdatedInformation.Name)
+			e.Game.PlayersByName[playerUpdatedInformation.Name] = e.Game.PlayersById[playerUpdatedInformation.PlayerId]
 
-		case parser.ParserKilled(line):
+		case e.Parser.ParserKilled(line):
 
-			playerKilledInformation, err := parser.GetInformationKilledPlayer(line)
+			playerKilledInformation, err := e.Parser.GetInformationKilledPlayer(line)
 			if err != nil {
 				fmt.Println(err.Error())
 				continue
 			}
 
-			kill(game, playerKilledInformation)
-			game.AddDeadReason(playerKilledInformation.Reason)
+			e.Kill(e.Game, playerKilledInformation)
+			e.Game.AddDeadReason(playerKilledInformation.Reason)
 
 		default:
 			continue
@@ -71,7 +102,35 @@ func ParsingLog() {
 	}
 }
 
-func endGame(game *entity.Game) entity.ResultGameInformation {
+func (e *engine) BuildResultGame(result entity.ResultGameInformation, gameCounter int) string {
+
+	gameInstance := fmt.Sprintf("game_%d", gameCounter)
+
+	jsonResult, err := json.Marshal(map[string]entity.ResultGameInformation{gameInstance: result})
+	if err != nil {
+		fmt.Println("converter error - JSON:", err)
+		return ""
+	}
+
+	return string(jsonResult) + "\n"
+}
+
+func (e *engine) BuildDeadReasons(game *entity.Game, gameCounter int) string {
+	gameInstance := fmt.Sprintf("game-%d", gameCounter)
+
+	if len(game.DeadReasons) == 0 {
+		return ""
+	}
+
+	jsonResult, err := json.Marshal(map[string]map[string]int{gameInstance: game.DeadReasons})
+	if err != nil {
+		fmt.Println("converter error - JSON:", err)
+		return ""
+	}
+	return string(jsonResult) + "\n"
+}
+
+func (e *engine) EndGame(game *entity.Game) entity.ResultGameInformation {
 	game.Disable()
 
 	resultGameInformation := entity.ResultGameInformation{
@@ -81,7 +140,7 @@ func endGame(game *entity.Game) entity.ResultGameInformation {
 	for _, player := range game.Players {
 		resultGameInformation.TotalKills += player.Kills
 
-		if player.Name != WorldPlayerName {
+		if player.Name != game.DefaultPlayerName {
 			resultGameInformation.Players = append(resultGameInformation.Players, player.Name)
 			resultGameInformation.Kills[player.Name] = player.Kills
 		}
@@ -90,38 +149,10 @@ func endGame(game *entity.Game) entity.ResultGameInformation {
 	return resultGameInformation
 }
 
-func printResultGame(result entity.ResultGameInformation, gameCounter int) {
-
-	gameInstance := fmt.Sprintf("game_%d", gameCounter)
-
-	jsonResult, err := json.Marshal(map[string]entity.ResultGameInformation{gameInstance: result})
-	if err != nil {
-		fmt.Println("converter error - JSON:", err)
-		return
-	}
-
-	fmt.Println(string(jsonResult))
-}
-
-func printDeadReasons(game *entity.Game, gameCounter int) {
-	gameInstance := fmt.Sprintf("game-%d", gameCounter)
-
-	if len(game.DeadReasons) == 0 {
-		return
-	}
-
-	jsonResult, err := json.Marshal(map[string]map[string]int{gameInstance: game.DeadReasons})
-	if err != nil {
-		fmt.Println("converter error - JSON:", err)
-		return
-	}
-	fmt.Println(string(jsonResult))
-}
-
-func kill(game *entity.Game, playerKilledInformation entity.PlayerKilledInformation) {
+func (e *engine) Kill(game *entity.Game, playerKilledInformation entity.PlayerKilledInformation) {
 	if playerKilledInformation.KillerName == playerKilledInformation.DeadName {
 		return
-	} else if playerKilledInformation.KillerName == WorldPlayerName {
+	} else if playerKilledInformation.KillerName == game.DefaultPlayerName {
 		game.PlayersByName[playerKilledInformation.DeadName].AddKill(-1)
 	} else {
 		game.PlayersByName[playerKilledInformation.KillerName].AddKill(1)

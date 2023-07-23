@@ -1,20 +1,22 @@
 package entity
 
 type Game struct {
-	Running       bool
-	Players       []*Player
-	PlayersByName map[string]*Player
-	PlayersById   map[string]*Player
-	DeadReasons   map[string]int
+	Running           bool
+	Players           []*Player
+	PlayersByName     map[string]*Player
+	PlayersById       map[string]*Player
+	DeadReasons       map[string]int
+	DefaultPlayerName string
 }
 
 func NewGame() *Game {
 	return &Game{
-		Running:       false,
-		Players:       []*Player{},
-		PlayersByName: make(map[string]*Player),
-		PlayersById:   make(map[string]*Player),
-		DeadReasons:   make(map[string]int),
+		Running:           false,
+		Players:           []*Player{},
+		PlayersByName:     make(map[string]*Player),
+		PlayersById:       make(map[string]*Player),
+		DeadReasons:       make(map[string]int),
+		DefaultPlayerName: "<world>",
 	}
 }
 
@@ -40,15 +42,4 @@ func (g *Game) AddDeadReason(reason string) {
 	} else {
 		g.DeadReasons[reason] = 1
 	}
-}
-
-func InitGame() *Game {
-	game := NewGame()
-	game.Enable()
-
-	playerWorld := NewPlayer("0")
-	playerWorld.UpdatePlayer("<world>")
-	game.AddPlayer(playerWorld)
-
-	return game
 }
